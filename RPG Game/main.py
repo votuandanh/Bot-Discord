@@ -41,8 +41,13 @@ class MyBot(commands.Bot):
 
     async def setup_hook(self):
         logging.info("Đang tìm và tải các cog...")
+        
+        # Xây dựng đường dẫn tuyệt đối đến thư mục cogs để tránh lỗi FileNotFoundError
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        cogs_dir = os.path.join(script_dir, 'cogs')
+
         # Tìm và tải tất cả các cog trong thư mục 'cogs'
-        for filename in os.listdir('./cogs'):
+        for filename in os.listdir(cogs_dir):
             if filename.endswith('.py') and not filename.startswith('__'):
                 cog_name = f'cogs.{filename[:-3]}'
                 try:
