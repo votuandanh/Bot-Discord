@@ -7,9 +7,11 @@ from utils.checks import is_target_channel_check_func
 
 # --- DANH SÁCH VẬT PHẨM TRONG CỬA HÀNG ---
 SHOP_ITEMS = {
-    "sword1": {"name": "Kiếm Gỗ", "price": 50, "type": "weapon", "atk_boost": 5},
-    "potion1": {"name": "Bình Máu Nhỏ", "price": 20, "type": "consumable", "hp_restore": 50},
-    "armor1": {"name": "Áo Vải", "price": 80, "type": "armor", "def_boost": 3},
+    "sword1": {"name": "Kiếm Gỗ", "price": 50, "type": "weapon", "atk_boost": 5, "rarity": "Common", "slot": "weapon"},
+    "potion1": {"name": "Bình Máu Nhỏ", "price": 20, "type": "consumable", "hp_restore": 50, "rarity": "Common"},
+    "armor1": {"name": "Áo Vải", "price": 80, "type": "armor", "def_boost": 3, "rarity": "Common", "slot": "armor"},
+    "sword2": {"name": "Kiếm Sắt", "price": 200, "type": "weapon", "atk_boost": 15, "rarity": "Uncommon", "slot": "weapon"},
+    "armor2": {"name": "Giáp Da", "price": 250, "type": "armor", "def_boost": 8, "rarity": "Uncommon", "slot": "armor"},
 }
 
 # --- UI CHO CỬA HÀNG ---
@@ -92,11 +94,17 @@ class EquipView(discord.ui.View):
         super().__init__(timeout=180)
         self.player_id = player_id
 
-        # Tạo Select Menu từ kho đồ của người chơi
         conn = get_db_connection()
         cursor = conn.cursor()
+
+        # Lấy thông tin người chơi để biết vật phẩm nào đang được trang bị
+        cursor.execute("SELECT weapon_equipped_id, armor_equipped_id FROM players WHERE id = ?", (player_id,))
+        player_equipped = cursor.fetchone()
+        weapon_equipped_id = player_equipped['weapon_equipped_id']
+        armor_equipped_id = player_equipped['armor_equipped_id']
+
         # Chỉ lấy các vật phẩm có thể trang bị (vũ khí, giáp)
-        cursor.execute("SELECT inventory_id, item_name, item_type, is_equipped FROM inventory WHERE player_id = ? AND item_type IN ('weapon', 'armor')", (player_id,))
+        cursor.execute("SELECT inventory_id, item_name, item_type FROM inventory WHERE player_id = ? AND item_type IN ('weapon', 'armor')", (player_id,))
         equippable_items = cursor.fetchall()
         conn.close()
 
@@ -105,9 +113,18 @@ class EquipView(discord.ui.View):
             select_options.append(discord.SelectOption(label="Bạn không có trang bị nào.", value="none", default=True))
         else:
             for item in equippable_items:
-                equip_status = " (Đã trang bị)" if item['is_equipped'] else ""
+                equip_status = ""
+                if item['item_type'] == 'weapon' and item['inventory_id'] == weapon_equipped_id:
+                    equip_status = " (Đang trang bị)"
+                elif item['item_type'] == 'armor' and item['inventory_id'] == armor_equipped_id:
+                    equip_status = " (Đang trang bị)"
+                
+                # Lấy thông tin rarity từ SHOP_ITEMS
+                item_key = next((key for key, val in SHOP_ITEMS.items() if val['name'] == item['item_name']), None)
+                rarity = SHOP_ITEMS[item_key]['rarity'] if item_key else "Unknown"
+
                 select_options.append(
-                    discord.SelectOption(label=f"{item['item_name']}{equip_status}", value=str(item['inventory_id']))
+                    discord.SelectOption(label=f"[{rarity}] {item['item_name']}{equip_status}", value=str(item['inventory_id']))
                 )
         
         item_select = discord.ui.Select(placeholder="Chọn một vật phẩm để trang bị...", options=select_options)
@@ -120,21 +137,43 @@ class EquipView(discord.ui.View):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Lấy loại vật phẩm của item được chọn
-        cursor.execute("SELECT item_type FROM inventory WHERE inventory_id = ?", (selected_inventory_id,))
-        item_type = cursor.fetchone()['item_type']
+        # Lấy thông tin vật phẩm được chọn
+        cursor.execute("SELECT item_name, item_type FROM inventory WHERE inventory_id = ?", (selected_inventory_id,))
+        selected_item = cursor.fetchone()
+        item_name = selected_item['item_name']
+        item_type = selected_item['item_type']
 
-        # Bỏ trang bị tất cả các vật phẩm cùng loại
-        cursor.execute("UPDATE inventory SET is_equipped = 0 WHERE player_id = ? AND item_type = ?", (self.player_id, item_type))
+        # Xác định cột trong bảng players cần cập nhật
+        player_column_to_update = None
+        if item_type == 'weapon':
+            player_column_to_update = 'weapon_equipped_id'
+        elif item_type == 'armor':
+            player_column_to_update = 'armor_equipped_id'
+        else:
+            await interaction.response.send_message("Loại vật phẩm này không thể trang bị.", ephemeral=True)
+            conn.close()
+            return
 
-        # Trang bị vật phẩm mới
-        cursor.execute("UPDATE inventory SET is_equipped = 1 WHERE inventory_id = ?", (selected_inventory_id,))
+        # Lấy thông tin người chơi hiện tại
+        cursor.execute(f"SELECT {player_column_to_update} FROM players WHERE id = ?", (self.player_id,))
+        current_equipped_id = cursor.fetchone()[player_column_to_update]
+
+        message = ""
+        if current_equipped_id == selected_inventory_id:
+            # Vật phẩm đã được trang bị, gỡ bỏ trang bị
+            cursor.execute(f"UPDATE players SET {player_column_to_update} = NULL WHERE id = ?", (self.player_id,))
+            message = f"Bạn đã gỡ bỏ trang bị **{item_name}**."
+        else:
+            # Trang bị vật phẩm mới
+            cursor.execute(f"UPDATE players SET {player_column_to_update} = ? WHERE id = ?", (selected_inventory_id, self.player_id,))
+            message = f"Bạn đã trang bị **{item_name}**."
+        
         conn.commit()
         conn.close()
 
-        await interaction.response.send_message(f"Bạn đã trang bị thành công vật phẩm.", ephemeral=True)
+        await interaction.response.send_message(message, ephemeral=True)
         
-        # Cập nhật lại view để hiển thị trạng thái mới (tùy chọn)
+        # Cập nhật lại view để hiển thị trạng thái mới
         new_view = EquipView(self.player_id)
         await interaction.edit_original_response(view=new_view)
 

@@ -21,22 +21,38 @@ class CombatView(discord.ui.View):
     def __init__(self, player_data, monster_name, monster_stats):
         super().__init__(timeout=180)
         
-        # Tính toán lại chỉ số người chơi với trang bị
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT item_name FROM inventory WHERE player_id = ? AND is_equipped = 1", (player_data['id'],))
-        equipped_items = cursor.fetchall()
-        conn.close()
 
         bonus_atk = 0
         bonus_def = 0
-        for item_row in equipped_items:
-            item_name = item_row['item_name']
-            for key, shop_item in SHOP_ITEMS.items():
-                if shop_item['name'] == item_name:
-                    bonus_atk += shop_item.get('atk_boost', 0)
-                    bonus_def += shop_item.get('def_boost', 0)
-                    break
+
+        # Lấy ID vật phẩm đang trang bị từ player_data
+        weapon_equipped_id = player_data['weapon_equipped_id']
+        armor_equipped_id = player_data['armor_equipped_id']
+
+        # Lấy thông tin vũ khí đang trang bị
+        if weapon_equipped_id:
+            cursor.execute("SELECT item_name FROM inventory WHERE inventory_id = ?", (weapon_equipped_id,))
+            weapon_item = cursor.fetchone()
+            if weapon_item:
+                equipped_weapon_name = weapon_item['item_name']
+                for key, shop_item in SHOP_ITEMS.items():
+                    if shop_item['name'] == equipped_weapon_name:
+                        bonus_atk += shop_item.get('atk_boost', 0)
+                        break
+
+        # Lấy thông tin giáp đang trang bị
+        if armor_equipped_id:
+            cursor.execute("SELECT item_name FROM inventory WHERE inventory_id = ?", (armor_equipped_id,))
+            armor_item = cursor.fetchone()
+            if armor_item:
+                equipped_armor_name = armor_item['item_name']
+                for key, shop_item in SHOP_ITEMS.items():
+                    if shop_item['name'] == equipped_armor_name:
+                        bonus_def += shop_item.get('def_boost', 0)
+                        break
+        conn.close()
         
         # Cập nhật chỉ số thực tế cho trận đấu
         self.player = dict(player_data) # Tạo một bản sao để chỉnh sửa

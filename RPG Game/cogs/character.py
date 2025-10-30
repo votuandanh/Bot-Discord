@@ -94,24 +94,37 @@ def create_player_embed(player_data, user_avatar_url):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Lấy các vật phẩm đã trang bị
-    cursor.execute("SELECT item_name FROM inventory WHERE player_id = ? AND is_equipped = 1", (player_data['id'],))
-    equipped_items = cursor.fetchall()
-    conn.close()
-
     bonus_atk = 0
     bonus_def = 0
-    equipped_names = []
+    equipped_weapon_name = "Chưa trang bị"
+    equipped_armor_name = "Chưa trang bị"
 
-    for item_row in equipped_items:
-        item_name = item_row['item_name']
-        equipped_names.append(item_name)
-        # Tìm vật phẩm trong SHOP_ITEMS để lấy chỉ số
-        for key, shop_item in SHOP_ITEMS.items():
-            if shop_item['name'] == item_name:
-                bonus_atk += shop_item.get('atk_boost', 0)
-                bonus_def += shop_item.get('def_boost', 0)
-                break
+    # Lấy ID vật phẩm đang trang bị từ player_data
+    weapon_equipped_id = player_data['weapon_equipped_id']
+    armor_equipped_id = player_data['armor_equipped_id']
+
+    # Lấy thông tin vũ khí đang trang bị
+    if weapon_equipped_id:
+        cursor.execute("SELECT item_name FROM inventory WHERE inventory_id = ?", (weapon_equipped_id,))
+        weapon_item = cursor.fetchone()
+        if weapon_item:
+            equipped_weapon_name = weapon_item['item_name']
+            for key, shop_item in SHOP_ITEMS.items():
+                if shop_item['name'] == equipped_weapon_name:
+                    bonus_atk += shop_item.get('atk_boost', 0)
+                    break
+
+    # Lấy thông tin giáp đang trang bị
+    if armor_equipped_id:
+        cursor.execute("SELECT item_name FROM inventory WHERE inventory_id = ?", (armor_equipped_id,))
+        armor_item = cursor.fetchone()
+        if armor_item:
+            equipped_armor_name = armor_item['item_name']
+            for key, shop_item in SHOP_ITEMS.items():
+                if shop_item['name'] == equipped_armor_name:
+                    bonus_def += shop_item.get('def_boost', 0)
+                    break
+    conn.close()
 
     embed = discord.Embed(
         title=f"Thông Tin Nhân Vật: {player_data['name']}",
@@ -131,8 +144,7 @@ def create_player_embed(player_data, user_avatar_url):
     embed.add_field(name="Tấn Công (ATK)", value=atk_display, inline=True)
     embed.add_field(name="Phòng Thủ (DEF)", value=def_display, inline=True)
 
-    if equipped_names:
-        embed.add_field(name="Trang bị", value="\n".join(f"- {name}" for name in equipped_names), inline=False)
+    embed.add_field(name="Trang bị", value=f"Vũ khí: {equipped_weapon_name}\nGiáp: {equipped_armor_name}", inline=False)
 
     embed.set_footer(text=f"ID: {player_data['id']}")
     return embed

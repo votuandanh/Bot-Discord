@@ -26,7 +26,9 @@ def init_db():
         mp INTEGER DEFAULT 50,
         atk INTEGER DEFAULT 10,
         def INTEGER DEFAULT 5,
-        gold INTEGER DEFAULT 0
+        gold INTEGER DEFAULT 0,
+        weapon_equipped_id INTEGER DEFAULT NULL,
+        armor_equipped_id INTEGER DEFAULT NULL
     )
     """)
 
