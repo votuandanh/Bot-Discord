@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment
+.env
+
+# Database
+/data/rpg.db
+/rpg.db
+
+# IDEs and editors
+.vscode/
+.idea/
