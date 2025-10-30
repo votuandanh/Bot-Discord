@@ -6,6 +6,87 @@ from utils.database import get_db_connection
 from utils.checks import is_target_channel_check_func
 from cogs.economy import SHOP_ITEMS # Import SHOP_ITEMS để tra cứu chỉ số
 
+# --- CÁC THÀNH PHẦN UI ĐỂ TẠO NHÂN VẬT ---
+
+# Định nghĩa chỉ số cơ bản cho mỗi lớp
+CLASS_STATS = {
+    "Warrior": {"hp": 120, "mp": 30, "atk": 12, "def": 8},
+    "Mage": {"hp": 80, "mp": 80, "atk": 15, "def": 5},
+    "Archer": {"hp": 100, "mp": 50, "atk": 13, "def": 6},
+}
+
+# View để chọn Lớp nhân vật (Class)
+class CharacterClassSelectView(discord.ui.View):
+    def __init__(self, character_name):
+        super().__init__(timeout=180)
+        self.character_name = character_name
+
+    @discord.ui.select(
+        placeholder="Chọn lớp nhân vật của bạn...",
+        options=[
+            discord.SelectOption(label="Chiến Binh (Warrior)", description="HP và Phòng thủ cao.", value="Warrior", emoji="⚔️"),
+            discord.SelectOption(label="Pháp Sư (Mage)", description="Tấn công và MP cao.", value="Mage", emoji="✨"),
+            discord.SelectOption(label="Cung Thủ (Archer)", description="Chỉ số cân bằng.", value="Archer", emoji="🏹"),
+        ]
+    )
+    async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
+        class_name = select.values[0]
+        base_stats = CLASS_STATS[class_name]
+        player_id = interaction.user.id
+
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Thêm người chơi mới vào CSDL
+            cursor.execute("""
+                INSERT INTO players (id, name, class, hp, mp, atk, def)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (player_id, self.character_name, class_name, base_stats['hp'], base_stats['mp'], base_stats['atk'], base_stats['def']))
+            
+            conn.commit()
+            conn.close()
+
+            embed = discord.Embed(
+                title=f"Tạo Nhân Vật Thành Công!",
+                description=f"Chào mừng **{self.character_name}** (Lớp: {class_name}) đến với thế giới!",
+                color=discord.Color.green()
+            )
+            embed.set_thumbnail(url=interaction.user.avatar.url if interaction.user.avatar else None)
+            
+            # Chỉnh sửa tin nhắn gốc, xóa View đi
+            await interaction.response.edit_message(content=None, embed=embed, view=None)
+
+        except sqlite3.Error as e:
+            await interaction.response.edit_message(content=f"Lỗi CSDL: {e}", embed=None, view=None)
+        except Exception as e:
+            await interaction.response.edit_message(content=f"Lỗi không xác định: {e}", embed=None, view=None)
+
+# Modal (Biểu mẫu) để nhập Tên nhân vật
+class CharacterNameModal(discord.ui.Modal, title="Tạo Nhân Vật Mới"):
+    # Input cho tên nhân vật
+    name_input = discord.ui.TextInput(
+        label="Nhập tên nhân vật của bạn",
+        placeholder="Ví dụ: Anh Hùng, Dũng Sĩ...",
+        required=True,
+        min_length=3,
+        max_length=20
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        character_name = self.name_input.value
+
+        # Gửi phản hồi với View chọn lớp
+        await interaction.response.send_message(
+            f"Tên nhân vật của bạn là: **{character_name}**. Giờ hãy chọn lớp nhân vật:",
+            view=CharacterClassSelectView(character_name),
+            ephemeral=True
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception):
+        await interaction.response.send_message(f"Oops! Đã xảy ra lỗi: {error}", ephemeral=True)
+
+
 # --- UI CHO THÔNG TIN NHÂN VẬT ---
 
 def create_player_embed(player_data, user_avatar_url):
